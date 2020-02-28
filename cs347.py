@@ -30,7 +30,7 @@ def sliding_window(image, base_score, stepSize, windowSize):
     (max_score, maxr, maxc) = (0, 0, 0)
     winH, winW = windowSize
     H, W = image.shape
-    pad_image = np.lib.pad(image, ((winH // 2, winH - winH // 2), (winW // 2, winW - winW // 2)), mode='constant')
+    pad_image = np.lib.pad(image, ((winH // 2, winH - winH // 2), (winW // 2, winW - winW // 2)), mode='edge')
     response_map = np.zeros((H // stepSize + 1, W // stepSize + 1))
 
     for i in range(H // stepSize + 1):
@@ -43,9 +43,32 @@ def sliding_window(image, base_score, stepSize, windowSize):
                 max_score = response_map[i][j]
                 maxr = i * stepSize - winH // 2
                 maxc = j * stepSize - winW // 2
-    response_map = resize(response_map, image.shape, mode="constant")
+    response_map = resize(response_map, image.shape, mode="edge")
 
     return (max_score, maxr, maxc, response_map)
+
+def find_objects(image, threshold_score, base_score, stepSize, windowSize):
+    max_score = []
+    maxr = []
+    maxc = []
+    winH, winW = windowSize
+    H, W = image.shape
+    pad_image = np.lib.pad(image, ((winH // 2, winH - winH // 2), (winW // 2, winW - winW // 2)), mode='edge')
+    response_map = np.zeros((H // stepSize + 1, W // stepSize + 1))
+
+    for i in range(H // stepSize + 1):
+        for j in range(W // stepSize + 1):
+            if i * stepSize >= H or j * stepSize >= W:
+                continue
+            image_feature, image_hog = get_hog(pad_image[i * stepSize : i * stepSize + winH, j * stepSize : j * stepSize + winW])
+            response_map[i][j] = np.dot(image_feature, base_score)
+            if response_map[i][j] > threshold_score:
+                maxr.append(i * stepSize - winH // 2)
+                maxc.append(j * stepSize - winW // 2)
+                max_score.append(response_map[i][j])
+    response_map = resize(response_map, image.shape, mode="edge")
+
+    return (max_score, maxr, maxc)
 
 def plot_prediction(image, r, c, winW, winH):
     fig, ax = plt.subplots(1)
@@ -87,6 +110,36 @@ def pyramid_score(image, base_score, shape, stepSize=20, scale=0.9):
             max_scale = i[0]
             max_response_map = mrm
     return max_score, maxr, maxc, max_scale, max_response_map
+
+def intersection(r1, r2, c1, c2, shape):
+    h, w = shape
+    return abs(r1 - r2) <= h and abs(c1 - c2) <= w
+
+def pyramid_find_objects(image, threshold_score, base_score, shape, stepSize=20, scale=0.9):
+    max_score = []
+    maxr = []
+    maxc = []
+    max_scale = []
+    images = pyramid(image, scale)
+    for i in images:
+        ms, mr, mc = find_objects(i[1], threshold_score, base_score, stepSize, shape)
+        for j in range(len(mr)):
+            done = False
+            for k in range(len(maxr)):
+                if intersection(maxr[k] / max_scale[k], mr[j] / i[0], maxc[k] / max_scale[k], mc[j] / i[0], shape):
+                    if max_score[k] < ms[j]:
+                        max_score[k] = ms[j]
+                        maxr[k] = mr[j]
+                        maxc[k] = mc[j]
+                        max_scale[k] = i[0]
+                    done = True
+                    break
+            if done == False:
+                max_score.append(ms[j])
+                maxr.append(mr[j])
+                maxc.append(mc[j])
+                max_scale.append(i[0])
+    return max_score, maxr, maxc, max_scale
 
 def plot_prediction_pyramid(image, max_scale, winW, winH, maxc, maxr):
     fig, ax = plt.subplots(1)
