@@ -56,7 +56,9 @@ function up(e) {
 }
 
 function submit(e) {
-
+  var submitButton = document.getElementById("submit");
+  submitButton.href = canvas.toDataURL();
+  submitButton.download = "mypainting.png";
 }
 
 function save(e) {
