@@ -1,8 +1,10 @@
 var canvas;
 var ctx;
 var mouseDown = false;
+var x = 0;
+var y = 0;
 
-const DRAW_RADIUS = 8;
+const DRAW_RADIUS = 4;
 
 function init() {
   canvas = document.getElementById("canvas");
@@ -20,18 +22,23 @@ function init() {
 
 function move(e) {
   var rect = canvas.getBoundingClientRect();
-  var x = e.clientX - rect.left;
-  var y = e.clientY - rect.top;
+
+  var oldX = x;
+  var oldY = y;
+  x = e.clientX - rect.left;
+  y = e.clientY - rect.top;
 
   if (mouseDown) {
-    draw(x, y);
+    draw(oldX, oldY);
   }
 }
 
-function draw(x, y) {
+function draw(oldX, oldY) {
   ctx.beginPath();
-  ctx.arc(x, y, DRAW_RADIUS, 0, 2 * Math.PI, true);
-  ctx.closePath();
+  ctx.moveTo(oldX, oldY);
+  ctx.lineTo(x, y);
+  ctx.lineWidth = DRAW_RADIUS;
+  ctx.stroke();
   ctx.fill();
 }
 
