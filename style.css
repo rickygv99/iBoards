@@ -2,10 +2,24 @@
   text-align: center;
 }
 
+.img {
+  position: absolute;
+  z-index: 1;
+}
+
 #canvas {
   border: 1px solid black;
+  position: relative;
+  z-index: 20;
 }
 
 .button {
   padding: 10px 20px 10px 20px;
+  margin: 10px 2px 10px 2px;
+}
+
+a {
+    background: #69c;
+    color: #fff;
+    padding: 5px 10px;
 }

@@ -3,6 +3,7 @@ var ctx;
 var mouseDown = false;
 var x = 0;
 var y = 0;
+var background;
 
 const DRAW_RADIUS = 4;
 
@@ -15,6 +16,10 @@ function init() {
   window.addEventListener("mouseup", up);
 
   var submitButton = document.getElementById("submit");
+  submitButton.addEventListener("click", submit);
+
+  var saveButton = document.getElementById("save");
+  saveButton.addEventListener("click", save);
 
   var clearButton = document.getElementById("clear");
   clearButton.addEventListener("click", clear);
@@ -50,8 +55,20 @@ function up(e) {
   mouseDown = false;
 }
 
+function submit(e) {
+
+}
+
+function save(e) {
+  var saveButton = document.getElementById("save");
+  saveButton.href = canvas.toDataURL();
+  saveButton.download = "mypainting.png";
+}
+
 function clear(e) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(background, 0, 0, background.width, background.height,
+                0, 0, canvas.width, canvas.height);
 }
 
 init();

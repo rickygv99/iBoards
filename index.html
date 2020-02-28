@@ -8,15 +8,22 @@
       <title>iBoards Demo</title>
 
       <link rel="stylesheet" href="style.css">
+
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-compat/3.0.0-alpha1/jquery.min.js" integrity="sha256-jSgvwBkcmF/TwK4njXKwSvMgfbZdb0wpRW9mIIVHFGo=" crossorigin="anonymous"></script>
   </head>
   <body>
     <div class="main">
       <h1>iBoards Demo</h1>
-      <canvas id="canvas" width="800" height="600"></canvas>
     </div>
     <div class="main">
       <button class="button" type="button" id="submit">Submit</button>
+      <a id="save" href="#">Download</a>
       <button class="button" type="button" id="clear">Clear</button>
+
+    </div>
+    <div class="main">
+      <img class='img' src="breadboard.png" alt="" width="1500" height="1500" />
+      <canvas id="canvas" width="1500" height="1500"></canvas>
     </div>
   </body>
   <script src="main.js"></script>
