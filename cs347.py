@@ -71,7 +71,6 @@ def pyramid(image, scale=0.9, minSize=(200, 100)):
         images.append((current_scale, image))
     return images
 
-
 def pyramid_score(image, base_score, shape, stepSize=20, scale=0.9):
     max_score = 0
     maxr = 0
