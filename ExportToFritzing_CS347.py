@@ -5,7 +5,8 @@ import json
 import xml.etree.ElementTree as ET
 import os
 import subprocess
-
+from collections import namedtuple
+import re
 
 baseXML = """<?xml version="1.0" encoding="UTF-8"?>
 <module fritzingVersion="0.9.3b.04.19.5c895d327c44a3114e5fcc9d8260daf0cbb52806">
@@ -18,9 +19,108 @@ baseXML = """<?xml version="1.0" encoding="UTF-8"?>
     </instances>
 </module>"""
 
+# pin1J
+# x2="-243.379" y2="178.619"
+
+# pin3Z
+# x2="-225.362" y2="142.619"
+
+# pin3J
+# x2="-225.379" y2="178.619"
+
+# pin61Z
+# x2="296.635" y2="142.619"
+
+# pin63F
+# x2="314.617" y2="214.619"
+
+# pin63A
+# x2="314.617" y2="277.619"
+
+# pin1E
+# x2="-243.379" y2="241.619"
+
+# pin3X
+# x2="-225.362" y2="304.619"
+
+# pin61W
+# x2="126.379" y2="-204.737"
+
+
+Point = namedtuple("Point", "x y")
+def getCoordinate(pinValue):
+    number = int(re.findall(r"\d+", pinValue)[0])
+    letter = pinValue[-1]
+
+    # 9 is the increment for pins
+    x_coord = -243.379 + 200 + 9*(number-1)
+    y_coord = 0.0
+
+    # If Y,Z (top)
+    # pin3Z y="142.619"
+    if letter in "YZ":
+        y_coord = 142.619 - 100 + 9 * (ord('Z') - ord(letter))
+    
+    # If F,G,H,I,J
+    # pin 1J y="178.619"
+    # J = 74, F = 70
+    if letter in "FGHIJ":
+        y_coord = 178.619 - 100 + 9 * (ord('J') - ord(letter))
+
+    # If A,B,C,D,E
+    # pin1E y="241.619"
+    if letter in "ABCDE":
+        y_coord = 241.619 - 100 + 9 * (ord('E') - ord(letter))
+
+    # If W, X (bottom)
+    # pin3X y="304.619"
+    if letter in "WX":
+        y_coord = 304.619 - 100 + 9 * (ord('X') - ord(letter))
+
+
+    pin_point = Point(x_coord, y_coord)
+    return pin_point
+
+# connector0 is always the default "starting" position of the resistor
+def getResistorPinOffset(modulename, connector, pinValueTarget):
+
+    module = root.find("./instances/instance/[title='" + modulename + "']")
+    geometry = module.find("./views/breadboardView/geometry")
+
+    x = geometry.get("x")
+    y = geometry.get("y")
+
+    # pinStart will be at x="-1.3095" y="0" in reference to the resistor's "origin"
+    pinStart = Point(x,y)
+    pinTarget = getCoordinate(pinValueTarget)
+
+    xDiff = float(pinTarget.x) - float(pinStart.x)
+    yDiff = float(pinTarget.y) - float(pinStart.y)
+
+    if connector == "connector0":
+        x_coord = -1.3095 + xDiff + 18
+    else:
+        x_coord = 1.3095 + xDiff - 18
+    y_coord = 0 + yDiff
+
+    pin_point = Point(x_coord, y_coord)
+    return pin_point
+
 XIncrement = 70.0
 YIncrement = 70.0
 
+"""
+if len(sys.argv) != 2:
+    print("Requires a single command line argument: the name of the json text file to import")
+    exit()
+
+filename = sys.argv[1];
+with open(filename) as jsonFile:
+    jsonData = json.load(jsonFile)
+
+components = jsonData["components"]
+connections = jsonData["connections"]
+"""
 #power0VConnector = "connector0"
 #powerPositiveConnector = "connector1"
 #powerNegativeConnector = "connector2"
@@ -61,22 +161,34 @@ def addInstance(moduleIdRef, title, geometry, properties):
 
     #add geometries and increment location
     newschematicgeometry = ET.SubElement(newschematicview, "geometry", geometry)
-    newbreadboardgeometry = ET.SubElement(newbreadboardview, "geometry", geometry)
+    newbreadboardgeometry = ET.SubElement(newbreadboardview, "geometry", geometry)    
     newpcbgeometry = ET.SubElement(newpcbview, "geometry", geometry)
     return retval
 
-def addOpAmp(title, x, y):
-    addInstance("a59353bd0db0225dc22770e292c622f3", title, {"x" : str(x), "y" : str(y), "z" : "2.5"}, {})
-
-def addResistor(title, x, y, resistance):
+def addResistor(title, pin1, pin2, resistance):
+    # place resistor in midpoint between pins
+    pin1_coord = getCoordinate(pin1)
+    pin2_coord = getCoordinate(pin2)
+    x = (pin1_coord.x + pin2_coord.x)/2
+    y = (pin1_coord.y + pin2_coord.y)/2
     addInstance("ResistorModuleID", title, {"x" : str(x), "y" : str(y), "z" : "2.5"}, {"resistance" : str(resistance)})
+    addBreadboardConn(title, pin1, pin2)
+    insertPins(title, pin1, pin2)
 
+
+# not supported rn
 def addCapacitor(title, x, y, capacitance):
     addInstance("100milCeramicCapacitorModuleID", title, {"x" : str(x), "y" : str(y), "z" : "2.5"}, {"capacitance" : str(capacitance)})
 
 
-# for simplicity, assume every connection adds a single wire between connectors
-def addToBreadboard(modulename1, connectorID1, modulename2, connectorID2):
+# modulename1 = resistor
+# connectorID1 = resistor pin (ex: connector0, connector1)
+# modulename2 = breadboard
+# connectorID2 = breadboard pin (ex: pin34J)
+# NEED TO ALWAYS assign connector0 of resistor before connector1 OR IT WON'T WORK
+# visually, connector0 is the right side and connector1 is the left side of a resistor place on the breadboard
+
+def addtoBreadboard(modulename1, connectorID1, modulename2, connectorID2):
 
     m1 = root.find("./instances/instance/[title='" + modulename1 + "']")
     m2 = root.find("./instances/instance/[title='" + modulename2 + "']")
@@ -105,7 +217,7 @@ def addToBreadboard(modulename1, connectorID1, modulename2, connectorID2):
         c1_p = conns1_p.find("./connector[@connectorId='" + connectorID1 + "']")
         if c1_p is None:
             c1_p = ET.SubElement(conns1_p, "connector", {"connectorId" : connectorID1, "layer" : "copper0"})
-
+        
         connects1_s = c1_s.find("./connects")
         if connects1_s is None:
             connects1_s = ET.SubElement(c1_s, "connects")
@@ -156,8 +268,36 @@ def addToBreadboard(modulename1, connectorID1, modulename2, connectorID2):
     except NameError:
         print("Could not find matching instances for connection")
 
+# resistor title, connector0, connector1
+def insertPins(modulename, pinValue0, pinValue1):
+    module = root.find("./instances/instance/[title='" + modulename + "']")
+    conns_b = module.find("./views/breadboardView/connectors")
+
+
+    for connector in ["connector0", "connector1"]:
+        c_b = conns_b.find("./connector[@connectorId='" + connector + "']")
+        connectPin = c_b.find("./connects/connect[@modelIndex='1']")
+
+        # for end of the pin -> need to go to 
+        # breadboardview / connectors / connector / leg / the 2nd point in the leg changes where the resistor pin connects to
+        c_leg = ET.SubElement(c_b, "leg")
+        childPoint = ET.Element("point", {"x": "0", "y": "0"})
+        childBezier = ET.Element("bezier")
+        c_leg.append(childPoint)
+        c_leg.append(childBezier)
+
+        if connector == "connector0":
+            offset_coord = getResistorPinOffset(modulename, connector, pinValue0)
+        else:
+            offset_coord = getResistorPinOffset(modulename, connector, pinValue1)
+        childPoint = ET.Element("point", {"x": str(offset_coord.x), "y": str(offset_coord.y)})
+        childBezier = ET.Element("bezier")
+        c_leg.append(childPoint)
+        c_leg.append(childBezier)
+
+"""
 # for simplicity, assume every connection adds a single wire between connectors
-def addWire(modulename1, connectorID1, x, y, modulename2, connectorID2, x2, y2):
+def addWire(modulename1, connectorID1, pinValue1, modulename2, connectorID2, pinValue2):
 
     m1 = root.find("./instances/instance/[title='" + modulename1 + "']")
     m2 = root.find("./instances/instance/[title='" + modulename2 + "']")
@@ -176,6 +316,13 @@ def addWire(modulename1, connectorID1, x, y, modulename2, connectorID2, x2, y2):
 
     try:
         # add a wire instance
+        pin = getCoordinate(pinValue1)
+        pin2 = getCoordinate(pinValue2)
+        x = pin.x
+        y = pin.y
+        x2 = pin2.x
+        y2 = pin2.y
+
         wireId = addInstance("WireModuleID", "Wire" + str(globalIndex),
             {"x" : x, "y" : y, "x1" : "0", "y1" : "0", "x2" : x2, "y2" : y2}, {})
 
@@ -281,80 +428,26 @@ def addWire(modulename1, connectorID1, x, y, modulename2, connectorID2, x2, y2):
         ET.SubElement(connects3_p, "connect", {"connectorId" : connectorID1, "modelIndex" : m1.get("modelIndex"), "layer" : "copper0"})
         ET.SubElement(connects4_p, "connect", {"connectorId" : connectorID2, "modelIndex" : m2.get("modelIndex"), "layer" : "x"})
 
-
     except NameError:
         print("Could not find matching instances for connection")
+"""
 
-
-# the following is for a simple LED circuit
-
-
-# breadboard
-# z="2.00005" x="4.35048" y="-0.00437369"
-
-# led on breadboard
-# z="3.00005" x="120.339" y="-13.2786" 
-# z="3.00005" x="129.339" y="-13.2786"
-# z="3.00005" x="129.339" y="-22.2786"
-
-# resistor on breadboard
-# z="2.50002" x="52.6842" y="49.4595"
-# z="2.50002" x="52.6842" y="40.4595"
-# z="2.50002" x="61.6842" y="40.4595"
-
-# breadboard
-z="2.00005"
-x="4.35048"
-y="-0.00437369"
+# breadboard (DON'T CHANGE THE COORDINATEs)
+z="1.5"
+x="-38"
+y="38"
 addInstance("Breadboard-RSR03MB102-ModuleID", "breadboard_hi", {"z" : z, "x" : x, "y" : y}, {})
 
-# led
-z="3.00005"
-x="120.339"
-y="-13.2786"
-addInstance("5mmColorLEDModuleID", "red_led", {"z" : z, "x" : x, "y" : y}, {})
+def addBreadboardConn(modulename, pinValue0, pinValue1):
+    addtoBreadboard(modulename, "connector0", "breadboard_hi", pinValue0)
+    addtoBreadboard(modulename, "connector1", "breadboard_hi", pinValue1)
 
-# resistor
-incrementx = 61.6842-52.6842
-incrementy = 49.4595-40.4595
-z="2.50002"
-# if I were to shift it over to the right 3 spaces and down 2 spaces
-x=str(float("61.6842") + incrementx*3)
-y=str(float("40.4595") + incrementy*2)
-addInstance("ResistorModuleID", "resistor_hi", {"z" : z, "x" : x, "y" : y}, {})
-
-
-# battery
-z="3"
-x="45.3454"
-y="-193.233"
-addInstance("1000AFDF10011leg", "power", {"z" : z, "x" : x, "y" : y}, {})
-
-
-# one for each pin of the components
-addToBreadboard("red_led", "connector0", "breadboard_hi", "pin13I")
-addToBreadboard("red_led", "connector1", "breadboard_hi", "pin14I")
-addToBreadboard("resistor_hi", "connector0", "breadboard_hi", "pin9H")
-addToBreadboard("resistor_hi", "connector1", "breadboard_hi", "pin13H")
-
-
-# difference between component coordinate and its pin coordinates
-# x="45.3454" y="-193.233"
-positiveLeadPowerDiff = 126.379 - 45.3454
-negativeLeadPowerDiff = abs(-204.737) - abs(-193.233)
-
-
-x="135"
-y="54"
-x2="126.379"
-y2="-204.737"
-addWire("red_led", "connector1", x,y, "power", "connector1", x2, y2)
-
-x="261.379"
-y="-133.624"
-x2="-171.385"
-y2="196.624"
-addWire("power", "connector0", x, y, "resistor_hi", "connector0", x2, y2)
+# wheatstone bridge example
+addResistor("resistor_1", "pin8E", "pin12E", 200)
+addResistor("resistor_2", "pin8A", "pin13A", 200)
+addResistor("resistor_3", "pin12B", "pin13A", 200)
+addResistor("resistor_4", "pin12C", "pin17B", 200)
+addResistor("resistor_5", "pin13E", "pin17E", 200)
 
 
 tree.write("testout1.fz")
