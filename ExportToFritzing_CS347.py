@@ -48,9 +48,25 @@ baseXML = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 Point = namedtuple("Point", "x y")
+DoublePoint = namedtuple("DoublePoint", "x y x2 y2")
+
+def getWireCoordinate(pinValue0, pinValue1):
+    pin = getCoordinate(pinValue0)
+    pin2 = getCoordinate(pinValue1)
+
+    x = pin.x + 19
+    y = pin.y + 4
+    x2 = pin2.x - pin.x
+    y2 = pin2.y - pin.y
+
+    wire_points = DoublePoint(x, y, x2, y2)
+    return wire_points
+
+
+
 def getCoordinate(pinValue):
     number = int(re.findall(r"\d+", pinValue)[0])
-    letter = pinValue[-1]
+    letter = pinValue[-1] 
 
     # 9 is the increment for pins
     x_coord = -243.379 + 200 + 9*(number-1)
@@ -173,7 +189,7 @@ def addResistor(title, pin1, pin2, resistance):
     y = (pin1_coord.y + pin2_coord.y)/2
     addInstance("ResistorModuleID", title, {"x" : str(x), "y" : str(y), "z" : "2.5"}, {"resistance" : str(resistance)})
     addBreadboardConn(title, pin1, pin2)
-    insertPins(title, pin1, pin2)
+    insertResistorPins(title, pin1, pin2)
 
 
 # not supported rn
@@ -269,7 +285,7 @@ def addtoBreadboard(modulename1, connectorID1, modulename2, connectorID2):
         print("Could not find matching instances for connection")
 
 # resistor title, connector0, connector1
-def insertPins(modulename, pinValue0, pinValue1):
+def insertResistorPins(modulename, pinValue0, pinValue1):
     module = root.find("./instances/instance/[title='" + modulename + "']")
     conns_b = module.find("./views/breadboardView/connectors")
 
@@ -295,12 +311,39 @@ def insertPins(modulename, pinValue0, pinValue1):
         c_leg.append(childPoint)
         c_leg.append(childBezier)
 
-"""
+# hardcoded coordinate for power
+def insertPowerPins(modulename):
+    module = root.find("./instances/instance/[title='" + modulename + "']")
+    conns_b = module.find("./views/breadboardView/connectors")
+
+
+    for connector in ["connector0", "connector1"]:
+        c_b = conns_b.find("./connector[@connectorId='" + connector + "']")
+        connectPin = c_b.find("./connects/connect[@modelIndex='1']")
+
+        # for end of the pin -> need to go to 
+        # breadboardview / connectors / connector / leg / the 2nd point in the leg changes where the resistor pin connects to
+        c_leg = ET.SubElement(c_b, "leg")
+        childPoint = ET.Element("point", {"x": "0", "y": "0"})
+        childBezier = ET.Element("bezier")
+        c_leg.append(childPoint)
+        c_leg.append(childBezier)
+
+        if connector == "connector0":
+            offset_coord = Point(44, -16-9*8)
+        else:
+            offset_coord = Point(35, 10+9*10)
+
+        childPoint = ET.Element("point", {"x": str(offset_coord.x), "y": str(offset_coord.y)})
+        childBezier = ET.Element("bezier")
+        c_leg.append(childPoint)
+        c_leg.append(childBezier)
+
+
 # for simplicity, assume every connection adds a single wire between connectors
-def addWire(modulename1, connectorID1, pinValue1, modulename2, connectorID2, pinValue2):
+def addWire(modulename1, connectorID1, connectorID2):
 
     m1 = root.find("./instances/instance/[title='" + modulename1 + "']")
-    m2 = root.find("./instances/instance/[title='" + modulename2 + "']")
 
     # instances = root.find("instances")
     # for m in instances.findall("instance"):
@@ -316,85 +359,20 @@ def addWire(modulename1, connectorID1, pinValue1, modulename2, connectorID2, pin
 
     try:
         # add a wire instance
-        pin = getCoordinate(pinValue1)
-        pin2 = getCoordinate(pinValue2)
-        x = pin.x
-        y = pin.y
-        x2 = pin2.x
-        y2 = pin2.y
 
-        wireId = addInstance("WireModuleID", "Wire" + str(globalIndex),
+        wirePoints = getWireCoordinate(connectorID1, connectorID2)
+
+        x = str(wirePoints.x)
+        y = str(wirePoints.y)
+        x2 = str(wirePoints.x2)
+        y2 = str(wirePoints.y2)
+
+        wire_title = "Wire" + str(globalIndex)
+
+        wireId = addInstance("WireModuleID", wire_title,
             {"x" : x, "y" : y, "x1" : "0", "y1" : "0", "x2" : x2, "y2" : y2}, {})
 
         newWire = root.find("./instances/instance/[title='Wire" + wireId + "']")
-
-        #specify connections between wire instance and both end connectors
-        conns1_s = m1.find("./views/schematicView/connectors")
-        if conns1_s is None:
-            conns1_s = ET.SubElement(m1.find("./views/schematicView"), "connectors")
-        conns1_b = m1.find("./views/breadboardView/connectors")
-        if conns1_b is None:
-            conns1_b = ET.SubElement(m1.find("./views/breadboardView"), "connectors")
-        conns1_p = m1.find("./views/pcbView/connectors")
-        if conns1_p is None:
-            conns1_p = ET.SubElement(m1.find("./views/pcbView"), "connectors")
-
-        c1_s = conns1_s.find("./connector[@connectorId='" + connectorID1 + "']")
-        if c1_s is None:
-            c1_s = ET.SubElement(conns1_s, "connector", {"connectorId" : connectorID1, "layer" : "schematic"})
-        c1_b = conns1_b.find("./connector[@connectorId='" + connectorID1 + "']")
-        if c1_b is None:
-            c1_b = ET.SubElement(conns1_b, "connector", {"connectorId" : connectorID1, "layer" : "breadboard"})
-        c1_p = conns1_p.find("./connector[@connectorId='" + connectorID1 + "']")
-        if c1_p is None:
-            c1_p = ET.SubElement(conns1_p, "connector", {"connectorId" : connectorID1, "layer" : "copper0"})
-
-        connects1_s = c1_s.find("./connects")
-        if connects1_s is None:
-            connects1_s = ET.SubElement(c1_s, "connects")
-        ET.SubElement(connects1_s, "connect", {"connectorId" : "connector0", "modelIndex" : wireId, "layer" : "schematicTrace"})
-        connects1_b = c1_b.find("./connects")
-        if connects1_b is None:
-            connects1_b = ET.SubElement(c1_b, "connects")
-        ET.SubElement(connects1_b, "connect", {"connectorId" : "connector0", "modelIndex" : wireId, "layer" : "breadboardWire"})
-        connects1_p = c1_p.find("./connects")
-        if connects1_p is None:
-            connects1_p = ET.SubElement(c1_p, "connects")
-        ET.SubElement(connects1_p, "connect", {"connectorId" : "connector0", "modelIndex" : wireId, "layer" : "copper0trace"})
-
-        conns2_s = m2.find("./views/schematicView/connectors")
-        if conns2_s is None:
-            conns2_s = ET.SubElement(m2.find("./views/schematicView"), "connectors")
-        conns2_b = m2.find("./views/breadboardView/connectors")
-        if conns2_b is None:
-            conns2_b = ET.SubElement(m2.find("./views/breadboardView"), "connectors")
-        conns2_p = m2.find("./views/pcbView/connectors")
-        if conns2_p is None:
-            conns2_p = ET.SubElement(m2.find("./views/pcbView"), "connectors")
-
-        c2_s = conns2_s.find("./connector[@connectorId='" + connectorID2 + "']")
-        if c2_s is None:
-            c2_s = ET.SubElement(conns2_s, "connector", {"connectorId" : connectorID2, "layer" : "schematic"})
-        c2_b = conns2_b.find("./connector[@connectorId='" + connectorID2 + "']")
-        if c2_b is None:
-            c2_b = ET.SubElement(conns2_b, "connector", {"connectorId" : connectorID2, "layer" : "breadboard"})
-        c2_p = conns2_p.find("./connector[@connectorId='" + connectorID2 + "']")
-        if c2_p is None:
-            c2_p = ET.SubElement(conns2_p, "connector", {"connectorId" : connectorID2, "layer" : "copper0"})
-
-        connects2_s = c2_s.find("./connects")
-        if connects2_s is None:
-            connects2_s = ET.SubElement(c2_s, "connects")
-        ET.SubElement(connects2_s, "connect", {"connectorId" : "connector1", "modelIndex" : wireId, "layer" : "schematicTrace"})
-        connects2_b = c2_b.find("./connects")
-        if connects2_b is None:
-            connects2_b = ET.SubElement(c2_b, "connects")
-        ET.SubElement(connects2_b, "connect", {"connectorId" : "connector1", "modelIndex" : wireId, "layer" : "breadboardWire"})
-        connects2_p = c2_p.find("./connects")
-        if connects2_p is None:
-            connects2_p = ET.SubElement(c2_p, "connects")
-        ET.SubElement(connects2_p, "connect", {"connectorId" : "connector1", "modelIndex" : wireId, "layer" : "copper0trace"})
-
 
         # for the newly created wire
         conns3_s = newWire.find("./views/schematicView/connectors")
@@ -422,15 +400,16 @@ def addWire(modulename1, connectorID1, pinValue1, modulename2, connectorID2, pin
         connects4_p = ET.SubElement(c4_p, "connects")
 
         ET.SubElement(connects3_s, "connect", {"connectorId" : connectorID1, "modelIndex" : m1.get("modelIndex"), "layer" : "schematic"})
-        ET.SubElement(connects4_s, "connect", {"connectorId" : connectorID2, "modelIndex" : m2.get("modelIndex"), "layer" : "schematic"})
+        ET.SubElement(connects4_s, "connect", {"connectorId" : connectorID2, "modelIndex" : m1.get("modelIndex"), "layer" : "schematic"})
         ET.SubElement(connects3_b, "connect", {"connectorId" : connectorID1, "modelIndex" : m1.get("modelIndex"), "layer" : "breadboard"})
-        ET.SubElement(connects4_b, "connect", {"connectorId" : connectorID2, "modelIndex" : m2.get("modelIndex"), "layer" : "breadboard"})
+        ET.SubElement(connects4_b, "connect", {"connectorId" : connectorID2, "modelIndex" : m1.get("modelIndex"), "layer" : "breadboard"})
         ET.SubElement(connects3_p, "connect", {"connectorId" : connectorID1, "modelIndex" : m1.get("modelIndex"), "layer" : "copper0"})
-        ET.SubElement(connects4_p, "connect", {"connectorId" : connectorID2, "modelIndex" : m2.get("modelIndex"), "layer" : "x"})
+        ET.SubElement(connects4_p, "connect", {"connectorId" : connectorID2, "modelIndex" : m1.get("modelIndex"), "layer" : "x"})
 
     except NameError:
         print("Could not find matching instances for connection")
-"""
+    
+    return wire_title
 
 # breadboard (DON'T CHANGE THE COORDINATEs)
 z="1.5"
@@ -438,16 +417,35 @@ x="-38"
 y="38"
 addInstance("Breadboard-RSR03MB102-ModuleID", "breadboard_hi", {"z" : z, "x" : x, "y" : y}, {})
 
+
+
+
 def addBreadboardConn(modulename, pinValue0, pinValue1):
     addtoBreadboard(modulename, "connector0", "breadboard_hi", pinValue0)
     addtoBreadboard(modulename, "connector1", "breadboard_hi", pinValue1)
+
+# for power
+addInstance("1000AFDF10011leg", "power", {"z" : z, "x" : "-250", "y" : "75"}, {})
+addBreadboardConn("power", "pin4Z", "pin3W")
+insertPowerPins("power")
+wire_title = addWire("breadboard_hi", "pin3X", "pin3Z")
+wire_title = addWire("breadboard_hi", "pin4W", "pin4Y")
 
 # wheatstone bridge example
 addResistor("resistor_1", "pin8E", "pin12E", 200)
 addResistor("resistor_2", "pin8A", "pin13A", 200)
 addResistor("resistor_3", "pin12B", "pin13A", 200)
-addResistor("resistor_4", "pin12C", "pin17B", 200)
-addResistor("resistor_5", "pin13E", "pin17E", 200)
+addResistor("resistor_4", "pin12C", "pin18B", 200)
+addResistor("resistor_5", "pin13E", "pin18E", 200)
+
+wire_title = addWire("breadboard_hi", "pin6W", "pin8C")
+wire_title = addWire("breadboard_hi", "pin18A", "pin18X")
+
+# wire_title = addWire("breadboard_hi", "pin18E", "pin62B")
+# addResistor("resistor_6", "pin8E", "pin20G", 200)
+# addResistor("resistor_7", "pin20G", "pin52F", 200)
+
+
 
 
 tree.write("testout1.fz")
